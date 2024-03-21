@@ -3,7 +3,12 @@
 {
 	"name": "Deep Stream",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-	"image": "nvcr.io/nvidia/deepstream:6.4-triton-multiarch",
+	// "image": "nvcr.io/nvidia/deepstream:6.4-triton-multiarch",
+	"build": {
+        // Path is relative to the devcontainer.json file.
+        "dockerfile": "Dockerfile"
+    },
+
 	"runArgs": [
 		"--gpus=all"
 	  ],
@@ -12,9 +17,7 @@
 	// "features": {},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	"forwardPorts": [
-		6379 //redis
-	],
+	"forwardPorts": [6379],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// "postCreateCommand": "pip3 install --user -r requirements.txt",
