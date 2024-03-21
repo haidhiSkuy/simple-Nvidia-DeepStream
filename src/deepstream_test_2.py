@@ -12,11 +12,11 @@ import pyds
 from common.bus_call import bus_call
 from common.is_aarch_64 import is_aarch64 
 
-PGIE_CLASS_ID_VEHICLE = 0
-PGIE_CLASS_ID_BICYCLE = 1
-PGIE_CLASS_ID_PERSON = 2
-PGIE_CLASS_ID_ROADSIGN = 3
-MUXER_BATCH_TIMEOUT_USEC = 33000 
+# PGIE_CLASS_ID_VEHICLE = 0
+# PGIE_CLASS_ID_BICYCLE = 1
+# PGIE_CLASS_ID_PERSON = 2
+# PGIE_CLASS_ID_ROADSIGN = 3
+# MUXER_BATCH_TIMEOUT_USEC = 33000 
 
 class DeepStreamApp2: 
     def __init__(
@@ -25,13 +25,25 @@ class DeepStreamApp2:
         pgie_config_path : str, 
         sgie_config_path1 : str, 
         sgie_config_path2 : str,
-        tracker_config_path : str
+        tracker_config_path : str,
+        
+        pgie_class_id_vehicle : int = 0,
+        pgie_class_id_bicycle : int = 1,
+        pgie_class_id_person : int = 2, 
+        pgie_class_id_roadsign : int = 3, 
+        muxer_batch_timeout_usec : int = 33000
         ) -> None:
         self.source_file = source_file 
         self.pgie_config_path = pgie_config_path 
         self.sgie_config_path1 = sgie_config_path1
         self.sgie_config_path2 = sgie_config_path2 
         self.tracker_config_path = tracker_config_path 
+
+        self.pgie_class_id_vehicle = pgie_class_id_vehicle 
+        self.pgie_class_id_bicycle = pgie_class_id_bicycle
+        self.pgie_class_id_person = pgie_class_id_person
+        self.pgie_class_id_roadsign = pgie_class_id_roadsign 
+        self.muxer_batch_timeout_usec = muxer_batch_timeout_usec
     
     def setup(self): 
         Gst.init(None)
@@ -115,7 +127,7 @@ class DeepStreamApp2:
         streammux.set_property('width', 1920)
         streammux.set_property('height', 1080)
         streammux.set_property('batch-size', 1)
-        streammux.set_property('batched-push-timeout', MUXER_BATCH_TIMEOUT_USEC)
+        streammux.set_property('batched-push-timeout', self.muxer_batch_timeout_usec)
 
         #Set properties of pgie and sgie
         pgie.set_property('config-file-path', self.pgie_config_path)
@@ -183,10 +195,10 @@ class DeepStreamApp2:
         frame_number=0
         #Intiallizing object counter with 0.
         obj_counter = {
-            PGIE_CLASS_ID_VEHICLE:0,
-            PGIE_CLASS_ID_PERSON:0,
-            PGIE_CLASS_ID_BICYCLE:0,
-            PGIE_CLASS_ID_ROADSIGN:0
+            self.pgie_class_id_vehicle:0,
+            self.pgie_class_id_bicycle:0,
+            self.pgie_class_id_person:0,
+            self.pgie_class_id_roadsign:0
         }
         num_rects=0
         gst_buffer = info.get_buffer()
@@ -236,7 +248,7 @@ class DeepStreamApp2:
             # memory will not be claimed by the garbage collector.
             # Reading the display_text field here will return the C address of the
             # allocated string. Use pyds.get_string() to get the string content.
-            py_nvosd_text_params.display_text = "Frame Number={} Number of Objects={} Vehicle_count={} Person_count={}".format(frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE], obj_counter[PGIE_CLASS_ID_PERSON])
+            py_nvosd_text_params.display_text = "Frame Number={} Number of Objects={} Vehicle_count={} Person_count={}".format(frame_number, num_rects, obj_counter[self.pgie_class_id_vehicle], obj_counter[self.pgie_class_id_person])
 
             # Now set the offsets where the string should appear
             py_nvosd_text_params.x_offset = 10
