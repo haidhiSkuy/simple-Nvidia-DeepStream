@@ -20,22 +20,6 @@ from common.bus_call import bus_call
 from common.is_aarch_64 import is_aarch64
 
 
-MAX_DISPLAY_LEN=64
-PGIE_CLASS_ID_VEHICLE = 0
-PGIE_CLASS_ID_BICYCLE = 1
-PGIE_CLASS_ID_PERSON = 2
-PGIE_CLASS_ID_ROADSIGN = 3
-MUXER_OUTPUT_WIDTH=1920
-MUXER_OUTPUT_HEIGHT=1080
-MUXER_BATCH_TIMEOUT_USEC = 33000
-TILED_OUTPUT_WIDTH=1280
-TILED_OUTPUT_HEIGHT=720
-GST_CAPS_FEATURES_NVMM="memory:NVMM"
-OSD_PROCESS_MODE= 0
-OSD_DISPLAY_TEXT= 1
-pgie_classes_str= ["Vehicle", "TwoWheeler", "Person","RoadSign"]
-
-
 class DeepStreamApp3: 
     def __init__(
             self, 
@@ -46,7 +30,19 @@ class DeepStreamApp3:
             no_display : bool = False,
             disable_probe : bool = False,
             file_loop : bool = False,
-            silent : bool = False
+            silent : bool = False,
+
+            pgie_class_id_vehicle : int = 0,
+            pgie_class_id_bicycle : int = 1,
+            pgie_class_id_person : int = 2, 
+            pgie_class_id_roadsign : int = 3, 
+            muxer_batch_timeout_usec : int = 33000, 
+
+            tiled_output_width : int = 1280,
+            tiled_output_height : int = 720, 
+
+            osd_process_mode : int = 0, 
+            osd_display_text : int = 1
             ): 
         self.source_files = source_files
         self.config_file = config_file
@@ -56,6 +52,18 @@ class DeepStreamApp3:
         self.disable_probe = disable_probe
         self.file_loop = file_loop
         self.silent = silent
+
+        self.pgie_class_id_vehicle = pgie_class_id_vehicle 
+        self.pgie_class_id_bicycle = pgie_class_id_bicycle
+        self.pgie_class_id_person = pgie_class_id_person
+        self.pgie_class_id_roadsign = pgie_class_id_roadsign
+        self.muxer_batch_timeout_usec = muxer_batch_timeout_usec
+
+        self.tiled_output_width = tiled_output_width
+        self.tiled_output_height = tiled_output_height
+
+        self.osd_process_mode = osd_process_mode
+        self.osd_display_text = osd_display_text
 
     def pgie_src_pad_buffer_probe(self, pad, info, u_data):
         frame_number=0
@@ -85,10 +93,10 @@ class DeepStreamApp3:
             l_obj=frame_meta.obj_meta_list
             num_rects = frame_meta.num_obj_meta
             obj_counter = {
-            PGIE_CLASS_ID_VEHICLE:0,
-            PGIE_CLASS_ID_PERSON:0,
-            PGIE_CLASS_ID_BICYCLE:0,
-            PGIE_CLASS_ID_ROADSIGN:0
+                self.pgie_class_id_vehicle:0,
+                self.pgie_class_id_bicycle:0,
+                self.pgie_class_id_person:0,
+                self.pgie_class_id_roadsign:0
             }
             while l_obj is not None:
                 try: 
@@ -102,7 +110,7 @@ class DeepStreamApp3:
                 except StopIteration:
                     break
             if not self.silent:
-                print("Frame Number=", frame_number, "Number of Objects=",num_rects,"Vehicle_count=",obj_counter[PGIE_CLASS_ID_VEHICLE],"Person_count=",obj_counter[PGIE_CLASS_ID_PERSON])
+                print("Frame Number=", frame_number, "Number of Objects=",num_rects,"Vehicle_count=",obj_counter[self.pgie_class_id_vehicle],"Person_count=",obj_counter[self.pgie_class_id_person])
 
             # Update frame rate through this probe
             stream_index = "stream{0}".format(frame_meta.pad_index)
@@ -276,8 +284,8 @@ class DeepStreamApp3:
         nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
         if not nvosd:
             sys.stderr.write(" Unable to create nvosd \n")
-        nvosd.set_property('process-mode',OSD_PROCESS_MODE)
-        nvosd.set_property('display-text',OSD_DISPLAY_TEXT)
+        nvosd.set_property('process-mode',self.osd_process_mode)
+        nvosd.set_property('display-text',self.osd_display_text)
 
         if self.file_loop:
             if is_aarch64():
@@ -315,7 +323,7 @@ class DeepStreamApp3:
         streammux.set_property('width', 1920)
         streammux.set_property('height', 1080)
         streammux.set_property('batch-size', number_sources)
-        streammux.set_property('batched-push-timeout', MUXER_BATCH_TIMEOUT_USEC)
+        streammux.set_property('batched-push-timeout', self.muxer_batch_timeout_usec)
 
         if self.requested_pgie == "nvinferserver" and self.config != None:
             self.pgie.set_property('config-file-path', self.config)
@@ -334,8 +342,8 @@ class DeepStreamApp3:
         tiler_columns=int(math.ceil((1.0*number_sources)/tiler_rows))
         tiler.set_property("rows",tiler_rows)
         tiler.set_property("columns",tiler_columns)
-        tiler.set_property("width", TILED_OUTPUT_WIDTH)
-        tiler.set_property("height", TILED_OUTPUT_HEIGHT)
+        tiler.set_property("width", self.tiled_output_width)
+        tiler.set_property("height", self.tiled_output_height)
         sink.set_property("qos",0)
 
         print("Adding elements to Pipeline \n")
@@ -436,22 +444,15 @@ if __name__ == "__main__":
     ) 
 
     args = parser.parse_args() 
-    source_files = args.input 
-    config_file = args.configfile 
-    requested_pgie = args.pgie
-    no_display = False # args.no_display 
-    file_loop = args.file_loop 
-    disable_probe = args.disable_probe
-    silent = args.silent  
-
+  
     pipeline = DeepStreamApp3( 
-        source_files, 
-        config_file, 
-        requested_pgie, 
-        no_display, 
-        file_loop, 
-        disable_probe, 
-        silent
+        args.input, 
+        args.configfile , 
+        args.pgie, 
+        args.no_display, 
+        args.file_loop, 
+        args.disable_probe, 
+        args.silent
     )
     pipeline.setup()
     pipeline.run()
