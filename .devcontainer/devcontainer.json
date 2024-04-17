@@ -13,9 +13,15 @@
 		"--gpus=all"
 	  ],
 
+	"containerEnv": {
+        "DISPLAY": "localhost:10.0"
+    },
+    "mounts": [
+        "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind,consistency=cached"
+    ],
+
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
-
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	"forwardPorts": [6379],
 

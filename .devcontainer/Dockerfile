@@ -3,6 +3,7 @@ FROM nvcr.io/nvidia/deepstream:6.4-triton-multiarch
 RUN apt-get update
 RUN /opt/nvidia/deepstream/deepstream-6.4/user_deepstream_python_apps_install.sh --build-bindings -r master
 RUN apt-get install libglib2.0 libglib2.0-dev libssl-dev -y
+RUN apt install python3-numpy python3-opencv -y
 
 # REDIS 
 RUN apt install lsb-release curl gpg -y 
@@ -16,4 +17,3 @@ ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 RUN locale-gen en_US.UTF-8
 RUN dpkg-reconfigure locales
-

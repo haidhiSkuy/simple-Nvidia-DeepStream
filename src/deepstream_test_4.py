@@ -139,10 +139,12 @@ class DeepStreamApp4:
         streammux.set_property('batch-size', 1)
         streammux.set_property('batched-push-timeout', self.muxer_batch_timeout_usec)
         pgie.set_property('config-file-path', self.pgie_config_file)
+        
         msgconv.set_property('config', self.msconv_config_file)
         msgconv.set_property('payload-type', self.schema_type)
         msgbroker.set_property('proto-lib', self.proto_lib)
         msgbroker.set_property('conn-str', self.conn_str)
+
         if self.adaptor_config_file is not None:
             msgbroker.set_property('config', self.adaptor_config_file)
         if self.topic is not None:
@@ -180,6 +182,7 @@ class DeepStreamApp4:
         pgie.link(nvvidconv)
         nvvidconv.link(self.nvosd)
         self.nvosd.link(tee)
+        
         queue1.link(msgconv)
         msgconv.link(msgbroker)
         queue2.link(sink)
@@ -337,8 +340,7 @@ class DeepStreamApp4:
                     # Frequency of messages to be send will be based on use case.
                     # Here message is being sent for first object every 30 frames.
 
-                    user_event_meta = pyds.nvds_acquire_user_meta_from_pool(
-                        batch_meta)
+                    user_event_meta = pyds.nvds_acquire_user_meta_from_pool(batch_meta)
                     if user_event_meta:
                         # Allocating an NvDsEventMsgMeta instance and getting
                         # reference to it. The underlying memory is not manged by
@@ -349,9 +351,11 @@ class DeepStreamApp4:
                         msg_meta.bbox.left = obj_meta.rect_params.left
                         msg_meta.bbox.width = obj_meta.rect_params.width
                         msg_meta.bbox.height = obj_meta.rect_params.height
+
                         msg_meta.frameId = frame_number
                         msg_meta.trackingId = long_to_uint64(obj_meta.object_id)
                         msg_meta.confidence = obj_meta.confidence
+                        
                         msg_meta = self.generate_event_msg_meta(msg_meta, obj_meta.class_id)
 
                         user_event_meta.user_meta_data = msg_meta
@@ -385,7 +389,7 @@ if __name__ == "__main__":
         help="Set the adaptor config file. Optional if "
              "connection string has relevant  details.",
         metavar="FILE", 
-        default=None
+        default="configs/msgbroker/cfg_redis.txt"
         )
     parser.add_argument(
         "--pgie-cfg", 
@@ -419,7 +423,7 @@ if __name__ == "__main__":
         help="Connection string of backend server. Optional if "
              "it is part of config file.", 
         metavar="STR", 
-        default="localhost;6379"
+        default=None # "localhost;6379"
         )
     parser.add_argument(
         "--schema-type", 
@@ -435,7 +439,7 @@ if __name__ == "__main__":
         help="Name of message topic. Optional if it is part of "
              "connection string or config file.", 
         metavar="TOPIC",
-        default=None
+        default="coba4"
         )
     parser.add_argument(
         "--no-display", 

@@ -19,6 +19,8 @@
 
 import sys
 import redis 
+from metadata import *
+import json
 
 sys.path.append('../')
 import gi
@@ -34,6 +36,7 @@ import platform
 from common.is_aarch_64 import is_aarch64
 from common.bus_call import bus_call
 from common.FPS import PERF_DATA
+from common.utils import long_to_uint64 
 import numpy as np
 import pyds
 import cv2
@@ -83,8 +86,8 @@ def tiler_sink_pad_buffer_probe(pad, info, u_data):
     # Note that pyds.gst_buffer_get_nvds_batch_meta() expects the
     # C address of gst_buffer as input, which is obtained with hash(gst_buffer)
     batch_meta = pyds.gst_buffer_get_nvds_batch_meta(hash(gst_buffer))
-
     l_frame = batch_meta.frame_meta_list
+
     while l_frame is not None:
         try:
             # Note that l_frame.data needs a cast to pyds.NvDsFrameMeta
@@ -115,6 +118,26 @@ def tiler_sink_pad_buffer_probe(pad, info, u_data):
                 break
             obj_counter[obj_meta.class_id] += 1
             n_frame = pyds.get_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
+            
+            user_event_meta = pyds.nvds_acquire_user_meta_from_pool(batch_meta)
+            if user_event_meta:
+                # Allocating an NvDsEventMsgMeta instance and getting
+                # reference to it. The underlying memory is not manged by
+                # Python so that downstream plugins can access it. Otherwise
+                # the garbage collector will free it when this probe exits.
+                msg_meta = pyds.alloc_nvds_event_msg_meta(user_event_meta)
+          
+                msg_meta.frameId = frame_number
+                msg_meta.trackingId = long_to_uint64(obj_meta.object_id)
+                msg_meta.confidence = obj_meta.confidence
+                msg_meta = generate_event_msg_meta(msg_meta, obj_meta.class_id)
+    
+                user_event_meta.user_meta_data = msg_meta
+                user_event_meta.base_meta.meta_type = pyds.NvDsMetaType.NVDS_EVENT_MSG_META
+                pyds.nvds_add_user_meta_to_frame(frame_meta, user_event_meta)
+            else:
+                print("Error in attaching event meta to buffer\n")
+    
             # Periodically check for objects with borderline confidence value that may be false positive detections.
             # If such detections are found, annotate the frame with bboxes and confidence value.
             # Save the annotated frame to file.
@@ -150,7 +173,7 @@ def tiler_sink_pad_buffer_probe(pad, info, u_data):
 
         print_str = f"Frame Number={frame_number}, Number of Objects={num_rects},Vehicle_count={obj_counter[PGIE_CLASS_ID_VEHICLE]}, Person_count={obj_counter[PGIE_CLASS_ID_PERSON]}"
         # redis_client.publish('pubsub', print_str)
-        print(print_str)
+        # print(print_str)
  
         # update frame rate through this probe
         stream_index = "stream{0}".format(frame_meta.pad_index)
@@ -365,6 +388,26 @@ def main(args):
     nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
     if not nvosd:
         sys.stderr.write(" Unable to create nvosd \n")
+    
+    msgconv = Gst.ElementFactory.make("nvmsgconv", "nvmsg-converter")
+    if not msgconv:
+        sys.stderr.write(" Unable to create msgconv \n")
+
+    msgbroker = Gst.ElementFactory.make("nvmsgbroker", "nvmsg-broker")
+    if not msgbroker:
+        sys.stderr.write(" Unable to create msgbroker \n")
+
+    queue1 = Gst.ElementFactory.make("queue", "nvtee-que1")
+    if not queue1:
+        sys.stderr.write(" Unable to create queue1 \n")
+
+    queue2 = Gst.ElementFactory.make("queue", "nvtee-que2")
+    if not queue2:
+        sys.stderr.write(" Unable to create queue2 \n")
+
+    tee = Gst.ElementFactory.make("tee", "nvsink-tee")
+    if not tee:
+        sys.stderr.write(" Unable to create tee \n")
 
     if is_aarch64():
         print("Creating nv3dsink \n")
@@ -399,6 +442,14 @@ def main(args):
     tiler.set_property("width", TILED_OUTPUT_WIDTH)
     tiler.set_property("height", TILED_OUTPUT_HEIGHT)
 
+    msgconv.set_property('config', "/workspaces/tes2/configs/dstest4_msgconv_config.txt")
+    msgconv.set_property('payload-type', 1)
+    msgbroker.set_property('proto-lib', "/opt/nvidia/deepstream/deepstream-6.4/lib/libnvds_redis_proto.so")
+    msgbroker.set_property('conn-str', "localhost;6379")
+    msgbroker.set_property('config', "configs/msgbroker/cfg_redis.txt")
+    msgbroker.set_property('topic', "tes")
+    msgbroker.set_property('sync', False)
+
     sink.set_property("sync", 0)
     sink.set_property("qos", 0)
 
@@ -418,7 +469,13 @@ def main(args):
     pipeline.add(filter1)
     pipeline.add(nvvidconv1)
     pipeline.add(nvosd)
+    pipeline.add(tee)
     pipeline.add(sink)
+
+    pipeline.add(queue1)
+    pipeline.add(queue2)
+    pipeline.add(msgconv)
+    pipeline.add(msgbroker)
 
     print("Linking elements in the Pipeline \n")
     streammux.link(pgie)
@@ -427,7 +484,20 @@ def main(args):
     filter1.link(tiler)
     tiler.link(nvvidconv)
     nvvidconv.link(nvosd)
-    nvosd.link(sink)
+    nvosd.link(tee)
+
+    queue1.link(msgconv)
+    msgconv.link(msgbroker)
+    queue2.link(sink)
+
+    sink_pad = queue1.get_static_pad("sink")
+    tee_msg_pad = tee.get_request_pad('src_%u')
+    tee_render_pad = tee.get_request_pad("src_%u")
+    if not tee_msg_pad or not tee_render_pad:
+        sys.stderr.write("Unable to get request pads\n")
+    tee_msg_pad.link(sink_pad)
+    sink_pad = queue2.get_static_pad("sink")
+    tee_render_pad.link(sink_pad)
 
     # create an event loop and feed gstreamer bus mesages to it
     loop = GLib.MainLoop()
