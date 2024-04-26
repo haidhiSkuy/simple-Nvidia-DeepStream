@@ -110,3 +110,29 @@ class CustomNvosd:
             
 
             r.publish(pub_channel, json.dumps(dict(obj_counter)))
+
+    
+    def sgie_analytics(self, frames, batch_meta, l_frame_meta: List, ll_obj_meta: List[List]):
+        obj_counter = defaultdict(int)
+
+        for frame, frame_meta, l_obj_meta in zip(frames, l_frame_meta, ll_obj_meta):
+            for obj_meta in l_obj_meta:
+                # secondary classifier (for car)
+                if obj_meta.class_id == 0:
+                    l_class_meta = obj_meta.classifier_meta_list
+                    while l_class_meta:
+                        class_meta = pyds.NvDsClassifierMeta.cast(l_class_meta.data)
+                        l_label = class_meta.label_info_list
+                        while l_label:
+                            label_info = pyds.NvDsLabelInfo.cast(l_label.data)
+
+                            # get label        
+                            label_str = label_info.result_label
+                            gie_id = class_meta.unique_component_id
+
+                            label_str += f"|{label_str}"
+
+                            l_label = l_label.next
+                        l_class_meta = l_class_meta.next
+
+        print("--------------------")
