@@ -2,10 +2,13 @@ import os
 import sys
 import math
 from typing import List
-from collections import defaultdict
 from inspect import signature
 from functools import partial
-from custom_nvods import CustomNvosd
+from collections import defaultdict
+
+from pipeline_modules.secondary_classifier import SecondaryClassifier
+from pipeline_modules.custom_nvods import CustomNvosd
+from pipeline_modules.tracker import Tracker
 
 import gi
 gi.require_version('Gst', '1.0')
@@ -13,16 +16,23 @@ from gi.repository import GLib, Gst
 
 import pyds
 from common.bus_call import bus_call
+from common.label_list import get_label
 from common.is_aarch_64 import is_aarch64  
 from common.FPS import PERF_DATA, FPSMonitor
-from common.label_list import get_label
+from common.utils import flatten
 
 
 class PipelineCommon: 
     def __init__(
             self,
             source_files : list[str],
+            
             pgie_config_file : str,
+            sgie1_path : str, 
+            sgie2_path : str,
+
+            tracker_path : str,
+
             muxer_batch_timeout_usec : float = 33000,
             file_loop : bool = False, 
 
@@ -33,9 +43,21 @@ class PipelineCommon:
 
             osd_process_mode : int = 0, 
             osd_display_text : int = 1,
+
+            nvods_func_name : str = "write_osd_analytics",
+            redis_config : list = ["localhost", 6379, 0, "channel"],
+            saved_frames_folder : str = None
     ): 
         self.source_files = source_files
+        
+        # nvinfer
         self.pgie_config_file = pgie_config_file 
+        self.sgie1_path = sgie1_path 
+        self.sgie2_path = sgie2_path
+
+        # tracker 
+        self.tracker_path = tracker_path
+
         self.muxer_batch_timeout_usec = muxer_batch_timeout_usec
         self.file_loop = file_loop
 
@@ -57,10 +79,29 @@ class PipelineCommon:
         for i in range(len(self.source_files)):
             self.fps_streams[f"stream{i}"] = FPSMonitor(i)
 
+        # custom nvosd like drawing bbox on frame, send analytics to redis, etc
+        self.nvods_func_name = nvods_func_name
+        self.redis_config = redis_config
+        self.saved_frames_folder = saved_frames_folder
         self.custom_nvods = CustomNvosd(
-            self.pgie_config_file, 
-            self.fps_streams
+            pgie_config_path=self.pgie_config_file, 
+            fps_streams=self.fps_streams,
+            redis_config=self.redis_config,
+            saved_frames_folder=self.saved_frames_folder
             )
+        
+
+        self.tracker = Tracker(
+            tracker_config_path=self.tracker_path,  
+            pipeline=self.pipeline
+        )
+        
+        # secondary classifier (nvinfer) 
+        self.secondary_nvinfer = SecondaryClassifier(
+            sgie_config_path1=self.sgie1_path, 
+            sgie_config_path2=self.sgie2_path,
+            pipeline=self.pipeline,
+        )
 
     ###### element methods #######
     def create_element(self, factory_name : str, name : str): 
@@ -241,10 +282,18 @@ class PipelineCommon:
         self.streammux = self.create_streammux()
         self._get_video()
 
-        # Primary inferencer
+        # Primary nvinfer
         self.pgie = self.create_element("nvinfer", "primary-inference")
         self.pgie.set_property('config-file-path', self.pgie_config_file)
         self.pgie.set_property("batch-size", number_sources)
+
+        # Tracker 
+        if self.tracker: 
+            self.tracker_list = self.tracker.tracker_create_element()
+
+        # secondary nvinfer
+        if self.secondary_nvinfer: 
+            self.sgie_list = self.secondary_nvinfer.sgie_create_element()
 
         # Converter
         self.nvvidconv1 = self.create_element("nvvideoconvert", "convertor1")
@@ -278,21 +327,23 @@ class PipelineCommon:
             self.tiler.set_property("nvbuf-memory-type", mem_type)
         
     def linking_pipeline(self): 
-        print("\033[1m"+"Linking elements in the Pipeline"+"\033[0m")
+        print("\n\033[1m"+"Linking elements in the Pipeline"+"\033[0m")
         # link the elements sequentially 
-        elements = [
-                self.streammux, 
-                self.pgie, 
-                self.nvvidconv1, 
-                self.filter1, 
-                self.tiler, 
-                self.nvvidconv, 
-                self.nvosd,
-                self.sink
-            ]
-        
-        self._link(elements)
+        elements = [self.streammux, self.pgie, self.nvvidconv1, self.filter1, 
+                    self.tiler, self.nvvidconv, self.nvosd, self.sink]
 
+        if self.tracker and self.secondary_nvinfer: 
+            elements.insert(2, self.tracker_list)
+            elements.insert(3, self.sgie_list)
+            elements = flatten(elements)
+        elif self.tracker: 
+            elements.insert(2, self.tracker_list) 
+            elements = flatten(elements)
+        elif self.secondary_nvinfer: 
+            elements.insert(2, self.sgie_list)
+            elements = flatten(elements)
+    
+        self._link(elements)
     
     def run(self): 
         loop = GLib.MainLoop()
@@ -304,28 +355,22 @@ class PipelineCommon:
             sys.stderr.write(" Unable to get src pad \n")
         else:
             if not self.disable_probe:
-                # tiler_sink_pad.add_probe(
-                #     Gst.PadProbeType.BUFFER, 
-                #     self._wrap_probe(self.custom_nvods.write_osd_analytics))
-                
-                # tiler_sink_pad.add_probe(
-                #     Gst.PadProbeType.BUFFER, 
-                #     self._wrap_probe(self.custom_nvods.write_frame))
-                
                 tiler_sink_pad.add_probe(
                     Gst.PadProbeType.BUFFER, 
-                    self._wrap_probe(self.custom_nvods.redis)
+                    self._wrap_probe(
+                        getattr(self.custom_nvods, self.nvods_func_name)
+                        )
                     )
-
+                
                 # perf callback function to print fps every 5 sec
                 GLib.timeout_add(1000, self.perf_data.perf_print_callback)
 
         # List the sources
-        print("Now playing...")
+        print("\nNow playing...")
         for i, source in enumerate(self.source_files):
             print(i, ": ", source)
 
-        print("Starting pipeline \n")
+        print("\nStarting pipeline \n")
         # start play back and listed to events		
         self.pipeline.set_state(Gst.State.PLAYING)
         try:
