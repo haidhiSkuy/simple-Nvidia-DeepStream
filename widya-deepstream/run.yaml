@@ -1,0 +1,20 @@
+# list of source files
+source_files: [
+  "file:///opt/nvidia/deepstream/deepstream-6.4/samples/streams/sample_720p.mp4"
+  ]
+
+# primary inference
+pgie_config_path: "/workspaces/tes2/widya-deepstream/configs/widya-config.txt"
+
+# secondary inference
+sgie1_config_path: "/workspaces/tes2/test_apps/configs/sgies/dstest2_sgie1_config.txt"
+sgie2_config_path: "/workspaces/tes2/test_apps/configs/sgies/dstest2_sgie2_config.txt" 
+
+# Tracker 
+tracker_config_path: "/workspaces/tes2/test_apps/configs/tracker/tracker_config.txt" 
+
+# custom nvods; fill with custom nvods function name e.g. write_osd_analytics, write_frame, redis .etc 
+# refer to pipeline_modules/custom_nvods.py
+nvods: "redis"
+redis_config: ["localhost", 6379, 0, "widya"] #activated if nvods is redis
+save_frames_folder: # "/workspaces/tes2/widya-deepstream/output" # only if the function writing a frame to disk
