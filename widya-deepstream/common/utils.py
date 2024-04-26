@@ -15,6 +15,7 @@
 # limitations under the License.
 ################################################################################
 
+import os
 import ctypes
 import sys
 sys.path.append('/opt/nvidia/deepstream/deepstream/lib')
@@ -22,3 +23,27 @@ sys.path.append('/opt/nvidia/deepstream/deepstream/lib')
 def long_to_uint64(l):
     value = ctypes.c_uint64(l & 0xffffffffffffffff).value
     return value
+
+
+def flatten(lst):
+    flattened_list = []
+    for item in lst:
+        if isinstance(item, list):
+            flattened_list.extend(flatten(item))
+        else:
+            flattened_list.append(item)
+    return flattened_list 
+
+
+def create_output_folder(base_dir):
+  subfolder_name = "stream"
+  counter = 1
+
+  while True:
+    subfolder_path = os.path.join(base_dir, f"{subfolder_name}{counter}")
+    if not os.path.exists(subfolder_path):
+      os.makedirs(subfolder_path)
+      break
+    counter += 1
+
+  return subfolder_path
