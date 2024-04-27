@@ -54,31 +54,28 @@
 
 [property]
 gpu-id=0
-net-scale-factor=0.00392156862745098
+net-scale-factor=1
 tlt-model-key=tlt_encode
-tlt-encoded-model=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Primary_Detector/resnet18_trafficcamnet.etlt
-model-engine-file=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Primary_Detector/resnet18_trafficcamnet.etlt_b2_gpu0_int8.engine
-labelfile-path=/workspaces/tes2/widya-deepstream/configs/widya-label.txt
-int8-calib-file=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Primary_Detector/cal_trt.bin
+tlt-encoded-model=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Secondary_VehicleMake/resnet18_vehiclemakenet.etlt
+model-engine-file=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Secondary_VehicleMake/resnet18_vehiclemakenet.etlt_b16_gpu0_int8.engine
+labelfile-path=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Secondary_VehicleMake/labels.txt
+int8-calib-file=/opt/nvidia/deepstream/deepstream-6.4/samples/models/Secondary_VehicleMake/cal_trt.bin
 force-implicit-batch-dim=1
-batch-size=1
-process-mode=1
-#0=RGB, 1=BGR
-model-color-format=0
-## 0=FP32, 1=INT8, 2=FP16 mode
+batch-size=16
+# 0=FP32 and 1=INT8 mode
 network-mode=1
-num-detected-classes=4
-interval=0
-gie-unique-id=1
-uff-input-order=0
+input-object-min-width=64
+input-object-min-height=64
+model-color-format=1
+gie-unique-id=2
+operate-on-gie-id=1
+operate-on-class-ids=0
+is-classifier=1
 uff-input-blob-name=input_1
-output-blob-names=output_cov/Sigmoid;output_bbox/BiasAdd
+output-blob-names=predictions/Softmax
+classifier-async-mode=1
+classifier-threshold=0.51
+process-mode=2
 #scaling-filter=0
 #scaling-compute-hw=0
-cluster-mode=2
-infer-dims=3;544;960
-
-[class-attrs-all]
-pre-cluster-threshold=0.2
-eps=0.2
-group-threshold=1
+infer-dims=3;244;244
